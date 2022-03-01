@@ -1,0 +1,19 @@
+fastboot flash aboot emmc_appsboot.mbn
+fastboot reboot-bootloader
+sleep 10
+fastboot flash abootbak emmc_appsboot.mbn
+fastboot flash modem NON-HLOS.bin
+fastboot flash persist persist.img
+fastboot flash rpm rpm.mbn
+fastboot flash rpmbak rpm.mbn
+fastboot flash sbl1 sbl1.mbn
+fastboot flash sbl1bak sbl1.mbn
+fastboot flash tz tz.mbn
+fastboot flash tzbak tz.mbn
+fastboot flash sec sec.dat
+fastboot flash splash splash.img
+fastboot flash boot hybris-boot.img
+fastboot flash recovery hybris-recovery.img
+fastboot flash system fimage.img001
+fastboot flash userdata sailfish.img001
+fastboot reboot

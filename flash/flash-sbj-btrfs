@@ -1,0 +1,18 @@
+fastboot flash aboot emmc_appsboot.mbn
+fastboot reboot-bootloader
+sleep 10
+fastboot flash modem NON-HLOS.bin
+fastboot flash persist persist.img
+fastboot flash rpm rpm.mbn
+fastboot flash sbl1 sbl1.mbn
+fastboot flash sbl2 sbl2.mbn
+fastboot flash sbl3 sbl3.mbn
+fastboot flash tz tz.mbn
+fastboot flash boot boot.img
+fastboot flash recovery recovery.img
+fastboot flash sailfish sailfish.img001
+fastboot flash sailfish sailfish.img002
+fastboot flash sailfish sailfish.img003
+fastboot flash sailfish sailfish.img004
+fastboot flash sailfish sailfish.img005
+fastboot reboot

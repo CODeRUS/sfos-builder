@@ -1,0 +1,13 @@
+fastboot flash lk lk.mbn
+fastboot flash boot hybris-boot.img
+fastboot flash recovery hybris-recovery.img
+fastboot flash logo logo.bin
+fastboot flash ITEMS items.ini
+fastboot flash secro secro.img
+fastboot flash tee1 trustzone.bin
+fastboot flash tee2 trustzone.bin
+fastboot flash splash splash.img
+fastboot flash cache cache.img
+fastboot flash system fimage.img001
+fastboot flash userdata sailfish.img001
+fastboot reboot

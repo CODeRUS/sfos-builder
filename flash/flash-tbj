@@ -1,0 +1,21 @@
+fastboot flash osloader efilinux-user.efi
+fastboot boot droidboot.img
+sleep 10
+fastboot oem wipe ESP
+fastboot oem wipe reserved
+fastboot oem start_partitioning
+fastboot flash /tmp/partition.tbl partition.tbl
+fastboot oem partition /tmp/partition.tbl
+fastboot erase logs
+fastboot oem stop_partitioning
+fastboot flash ESP esp.img
+fastboot flash fastboot droidboot.img
+fastboot erase sailfish
+fastboot flash boot hybris-boot.img
+fastboot flash recovery hybris-recovery.img
+fastboot flash fimage fimage.img001
+fastboot flash sailfish sailfish.img001
+fastboot flash sailfish sailfish.img002
+fastboot flash sailfish sailfish.img003
+fastboot continue
+fastboot reboot
