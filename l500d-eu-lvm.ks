@@ -1,7 +1,4 @@
-keyboard us
-user --name nemo --groups audio,input,video --password nemo
 timezone --utc UTC
-lang en_US.UTF-8
 
 part / --fstype="ext4" --size=2200 --label=root
 part /home --fstype="ext4" --size=800 --label=home
@@ -142,44 +139,86 @@ else
 fi
 
 # Setup LVM image
-dd if=/dev/zero bs=1 count=0 of=temp.img seek=3000M
+
+IMGSECTORS=0
+IMGBLOCKS=0
+IMGSIZE=0
+BLOCKSIZE=0
+
+resizeloop() {
+  local IMG=$1
+  local LOOP=$(/sbin/losetup -f)
+  /sbin/losetup $LOOP $IMG
+  /sbin/e2fsck -f -y $LOOP
+
+  # Get image blocks and free blocks
+  local BLOCKCOUNT=$(/sbin/dumpe2fs -h $LOOP 2>&1 | grep "Block count:" | grep -o -E '[0-9]+')
+  local FREEBLOCKS=$(/sbin/dumpe2fs -h $LOOP 2>&1 | grep "Free blocks:" | grep -o -E '[0-9]+')
+  BLOCKSIZE=$(/sbin/dumpe2fs -h $LOOP 2>&1 | grep "Block size:" | grep -o -E '[0-9]+')
+  echo "$IMG total block count: $BLOCKCOUNT - Free blocks: $FREEBLOCKS"
+
+  local IMAGEBLOCKS=$(/usr/bin/expr $BLOCKCOUNT - $FREEBLOCKS)
+  local IMAGESECTORS=$(/usr/bin/expr $IMAGEBLOCKS \* $BLOCKSIZE / 512 )
+
+  # Shrink to minimum
+  echo "Shrink $IMG to $IMAGESECTORS"
+  /sbin/resize2fs $LOOP ${IMAGESECTORS}s -f
+
+  # Get the size after resize.
+  IMGBLOCKS=$(/sbin/dumpe2fs -h $LOOP 2>&1 | grep "Block count:" | grep -o -E '[0-9]+')
+  IMGSIZE=$(/usr/bin/expr $IMGBLOCKS \* $BLOCKSIZE)
+  IMGSECTORS=$(/usr/bin/expr $IMGBLOCKS \* $BLOCKSIZE / 512)
+  echo "$IMG resized block count: $IMGBLOCKS - Block size: $BLOCKSIZE - Sectors: $IMGSECTORS - Total size: $IMGSIZE"
+
+  /sbin/losetup -d $LOOP
+}
+
+echo "Resize root and home"
+
+# Resize root and home to minimum
+resizeloop root.img
+
+ROOTSIZE=$IMGSIZE
+ROOTBLOCKS=$IMGBLOCKS
+ROOTSECTORS=$IMGSECTORS
+
+resizeloop home.img
+
+HOMESIZE=$IMGSIZE
+HOMEBLOCKS=$IMGBLOCKS
+HOMESECTORS=$IMGSECTORS
+
+# We will add some (100M) extra to temp image.
+TEMPIMGSECTORS=$(/usr/bin/expr $ROOTSECTORS + $HOMESECTORS + 200000 )
+
+dd if=/dev/zero bs=512 count=0 of=temp.img seek=$TEMPIMGSECTORS
+
 LVM_LOOP=$(/sbin/losetup -f)
 /sbin/losetup $LVM_LOOP temp.img
 /usr/sbin/pvcreate $LVM_LOOP
 /usr/sbin/vgcreate sailfish $LVM_LOOP
 
-# Resize root and home to minimum
-ROOT_LOOP=$(/sbin/losetup -f)
-/sbin/losetup $ROOT_LOOP root.img
-/sbin/e2fsck -f -y $ROOT_LOOP
-# The "on is al ready" sed hack is added to handle cases when resize2fs
-# outputs "The filesystem is already X blocks long" to stderr:
-BLOCKS=$(/sbin/resize2fs -M $ROOT_LOOP 2>&1 | tail -n 2 | sed "s/is already/on is al ready/" | /bin/grep "The filesystem on" | /bin/cut -d ' ' -f 7)
-echo We got ourselves root blocks _ $BLOCKS _
-SIZE=$(/usr/bin/expr $BLOCKS \* 4096)
-echo after maths size _ $SIZE _
-/usr/sbin/lvcreate -L ${SIZE}B --name root sailfish
-/bin/sync
-/sbin/losetup -d $ROOT_LOOP
-/usr/sbin/vgchange -a y
-dd if=root.img bs=4096 count=$BLOCKS of=/dev/sailfish/root
+echo "Create logical volume ROOT size: $ROOTSIZE"
+/usr/sbin/lvcreate -L ${ROOTSIZE}B --name root sailfish
 
-HOME_LOOP=$(/sbin/losetup -f)
-/sbin/losetup $HOME_LOOP home.img
-/sbin/e2fsck -f -y $HOME_LOOP
-# The "on is al ready" sed hack is added to handle cases when resize2fs
-# outputs "The filesystem is already X blocks long" to stderr:
-BLOCKS=$(/sbin/resize2fs -M $HOME_LOOP 2>&1 | tail -n 2 | sed "s/is already/on is al ready/" | /bin/grep "The filesystem on" | /bin/cut -d ' ' -f 7)
-echo We got ourselves home size _ $BLOCKS _
-SIZE=$(/usr/bin/expr $BLOCKS \* 4096)
+echo "Create logical volume HOME size: $HOMESIZE"
+/usr/sbin/lvcreate -L ${HOMESIZE}B --name home sailfish
 
-/usr/sbin/lvcreate -L ${SIZE}B --name home sailfish
 /bin/sync
-/sbin/losetup -d $HOME_LOOP
-/usr/sbin/vgchange -a y
-dd if=home.img bs=4096 count=$BLOCKS of=/dev/sailfish/home
+/usr/sbin/vgchange -a y sailfish
+
+dd if=root.img bs=$BLOCKSIZE count=$ROOTBLOCKS of=/dev/sailfish/root
+
+dd if=home.img bs=$BLOCKSIZE count=$HOMEBLOCKS of=/dev/sailfish/home
 
 /usr/sbin/vgchange -a n sailfish
+
+pigz -7 root.img && md5sum -b root.img.gz > root.img.gz.md5&
+pigz -7 home.img && md5sum -b home.img.gz > home.img.gz.md5&
+wait
+
+ROOTSIZE=$(/bin/ls -l root.img.gz | cut -d ' ' -f5)
+HOMESIZE=$(/bin/ls -l home.img.gz | cut -d ' ' -f5)
 
 # Temporary dir for making factory image backups.
 FIMAGE_TEMP=$(mktemp -d -p $(pwd))
@@ -187,26 +226,21 @@ FIMAGE_TEMP=$(mktemp -d -p $(pwd))
 # For some reason loop files created by imager don't shrink properly when
 # running resize2fs -M on them. Hence manually growing the loop file here
 # to make the shrinking work once we have the image populated.
-dd if=/dev/zero bs=1 seek=1400000000 count=1 of=fimage.img
+dd if=/dev/zero bs=512 seek=$(/usr/bin/expr \( $ROOTSIZE + $HOMESIZE + 100000000 \) / 512) count=1 of=fimage.img
 /sbin/e2fsck -f -y fimage.img
 /sbin/resize2fs -f fimage.img
-
-pigz -7 root.img
-md5sum -b root.img.gz > root.img.gz.md5
-
-pigz -7 home.img
-md5sum -b home.img.gz > home.img.gz.md5
 
 mount -o loop fimage.img $FIMAGE_TEMP
 mkdir -p $FIMAGE_TEMP/${RELEASENAME}
 mv root.img.gz* $FIMAGE_TEMP/${RELEASENAME}
 mv home.img.gz* $FIMAGE_TEMP/${RELEASENAME}
 umount $FIMAGE_TEMP
-rm -rf $FIMAGE_TEMP
+rmdir $FIMAGE_TEMP
 
 /sbin/e2fsck -f -y fimage.img
 /sbin/resize2fs -f -M fimage.img
 
+# To make the file magic right lets convert to single file sparse image.
 /usr/bin/img2simg_android fimage.img fimage.img001
 rm fimage.img
 
@@ -215,6 +249,7 @@ rm fimage.img
 mv temp.img sailfish.img
 
 /usr/bin/atruncate sailfish.img
+# To make the file magic right lets convert to single file sparse image.
 /usr/bin/img2simg_android sailfish.img sailfish.img001
 rm sailfish.img
 
