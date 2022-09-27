@@ -3,7 +3,7 @@ user --name nemo --groups audio,input,video --password nemo
 timezone --utc UTC
 lang en_US.UTF-8
 
-part / --fstype="ext4" --size=1800 --label=root
+part / --fstype="ext4" --size=2200 --label=root
 part /home --fstype="ext4" --size=800 --label=home
 part /fimage --fstype="ext4" --size=10 --label=fimage
 
@@ -18,7 +18,7 @@ repo --name="sailfish-eas-@RELEASE@-@ARCH@" --baseurl=https://store-repository.j
 repo --name="xt9-@RELEASE@-@ARCH@" --baseurl=https://store-repository.jolla.com/features/@RELEASE@/xt9/@ARCH@/ --ssl_verify=yes
 
 %packages
-@Jolla Configuration @PATTERN@
+patterns-sailfish-device-configuration-@PATTERN@
 feature-jolla
 feature-sailfish-eas
 patterns-sailfish-store-applications
